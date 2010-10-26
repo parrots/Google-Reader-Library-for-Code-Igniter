@@ -5,8 +5,8 @@
 * License: BSD License: http://creativecommons.org/licenses/BSD/
 *
 * @author  Curtis Herbert <me@forgottenexpanse.com>
-* @url http://forgottenexpanse.com/projects/code/ci_reader
-* @version 1.2.1 (2009-05-09)
+* @url http://www.consumedbycode.com/code/ci_google_reader
+* @version 1.2.2 (2010-10-25)
 */
 class Reader {
 	//urls needed to interact with google
@@ -15,7 +15,7 @@ class Reader {
 	var $feed_url 			= 	'http://www.google.com/reader/atom/';
 	var $item_url			=	'http://www.google.com/reader/api/0/item/edit';
 	var $edit_url			= 	'http://www.google.com/reader/api/0/edit-tag?client=scroll';
-	var $token_url			=	'http://www.google.com/reader/api/0/token';
+	var $token_url			=	'https://www.google.com/accounts/ClientLogin';
 	var $source		 		= 	'Google Reader API for Code Igniter';
 	
 	//states for items
@@ -28,7 +28,6 @@ class Reader {
 	//internal variables
 	var $_email;
 	var $_password;
-	var $_cookie;
 	var $_channel;
 	var $_errors = array();
 	var $_token = NULL;
@@ -57,7 +56,7 @@ class Reader {
 		if (isset($config['password'])) $this->_password = $config['password'];
 		
 		if (isset($config['email']) && isset($config['password'])) {
-			$this->_login();
+			$this->_load_token();
 		}
 	}
 	
@@ -181,7 +180,7 @@ class Reader {
 	function all_items_raw() {
 		$this->_clear_errors();
 		
-		$this->_login();
+		$this->_load_token();
 		if ($this->errors_exist()) return '';
 		
 		return $this->_fetch($this->feed_url . $this->reading_state);
@@ -212,7 +211,7 @@ class Reader {
 		if ($userid != NULL) {
 			$url = str_replace('/atom/user/-/', '/public/atom/user/' . $userid . '/', $this->feed_url . $this->shared_state);
 		} else {
-			$this->_login();
+			$this->_load_token();
 			if ($this->errors_exist()) return '';
 		}
 		return $this->_fetch($url);
@@ -228,7 +227,7 @@ class Reader {
 	function starred_items_raw() {
 		$this->_clear_errors();
 		
-		$this->_login();
+		$this->_load_token();
 		if ($this->errors_exist()) return '';
 		
 		return $this->_fetch($this->feed_url . $this->starred_state);
@@ -244,7 +243,7 @@ class Reader {
 	function subscriptions_raw() {
 		$this->_clear_errors();
 		
-		$this->_login();
+		$this->_load_token();
 		if ($this->errors_exist()) return '';
 		
 		return $this->_fetch($this->subscriptions_url);
@@ -363,56 +362,6 @@ class Reader {
 	}
 	
 	/**
-	 * If the user is not logged into Google Reader, this function will log in
-	 * using the provided email and password and store off a session ID for later
-	 * calls.
-	 * 
-	 * @access private
-	 * @return true/false based on success of loggin in
-	 */
-	function _login() {
-		if ($this->_cookie != NULL) {
-			return TRUE;
-		}
-		
-		if (!isset($this->_email) || !isset($this->_password)) {
-			$this->_set_error('READER_CREDENTIALS_NOT_PROVIDED', "User credentials were not provided.");
-			return FALSE;
-		}
-		
-		$post_data = array();
-		$post_data['Email'] = $this->_email;
-		$post_data['Passwd'] = $this->_password;
-		$post_data['continue'] = 'http://www.google.com/';
-		$post_data['source'] = $this->source;
-		$post_data['service'] = 'reader';
-		
-		$this->_channel = curl_init($this->login_url);
-		curl_setopt($this->_channel, CURLOPT_POST, TRUE);
-		curl_setopt($this->_channel, CURLOPT_POSTFIELDS, $post_data);
-		curl_setopt($this->_channel, CURLOPT_FOLLOWLOCATION, TRUE);
-		curl_setopt($this->_channel, CURLOPT_RETURNTRANSFER, TRUE);
-		$result = curl_exec($this->_channel);
-		curl_close($this->_channel);
-		
-		if (strpos($result, "SID=") === FALSE) {
-			$this->_set_error('READER_CREDENTIALS_INVALID', "User credentials provided were not valid.");
-			return FALSE;
-		}
-		
-		if ($i = strstr($result, "LSID")) {
-  			$sid = substr($result, 0, (strlen($result) - strlen($i)));
-  			$sid = rtrim(substr($sid, 4, (strlen($sid) - 4)));
-  			
-  			$this->_cookie = 'SID=' . $sid . '; domain=.google.com; path=/; expires=1600000000';
-  			return TRUE;
-		} else {
-			$this->_cookie = NULL;
-			return FALSE;
-		}
-	}
-	
-	/**
 	 * Gets a token from google to allow editing of data.  This function requires a
 	 * logged in user.
 	 * 
@@ -421,20 +370,38 @@ class Reader {
 	 */
 	function _load_token() {
 		if ($this->_token == NULL) {
-			if ($this->_cookie != NULL) {
-				$token = $this->_fetch($this->token_url);
-				if (strpos($token, 'access') !== FALSE) {
-					$this->_set_error('token_error', 'Unable to get token from google.');
-					$this->_token = NULL;
-					return FALSE;
-				} else {
-					$this->_token = $token;
-					return TRUE;
-				}
-			} else {
-				$this->_set_error('token_error', 'User must be logged in to get a token.');
+			if (!isset($this->_email) || !isset($this->_password)) {
+				$this->_set_error('READER_CREDENTIALS_NOT_PROVIDED', "User credentials were not provided.");
+				return FALSE;
+			}
+			
+			$post_data = array();
+			$post_data['Email'] = $this->_email;
+			$post_data['Passwd'] = $this->_password;
+			$post_data['continue'] = 'http://www.google.com/';
+			$post_data['accountType'] = 'HOSTED_OR_GOOGLE';
+			$post_data['source'] = $this->source;
+			$post_data['service'] = 'reader';
+			
+			$this->_channel = curl_init($this->login_url);
+			curl_setopt($this->_channel, CURLOPT_POST, TRUE);
+			curl_setopt($this->_channel, CURLOPT_POSTFIELDS, $post_data);
+			curl_setopt($this->_channel, CURLOPT_FOLLOWLOCATION, TRUE);
+			curl_setopt($this->_channel, CURLOPT_RETURNTRANSFER, TRUE);
+			$result = curl_exec($this->_channel);
+			curl_close($this->_channel);
+			
+			if (strpos($result, 'BadAuthentication') !== FALSE) {
+				$this->_set_error('READER_CREDENTIALS_INVALID', "User credentials were rejected by Google.");
+				return FALSE;
+			} else if (strpos($result, 'Auth') === FALSE) {
+				$this->_set_error('TOKEN_ERROR', 'Unable to get token from google.');
 				$this->_token = NULL;
 				return FALSE;
+			} else {
+				$token_start = strpos($result, 'Auth=');
+				$this->_token = substr($result, $token_start + 5);
+				return TRUE;
 			}
 		}
 	}
@@ -541,7 +508,7 @@ class Reader {
 	}
 	
 	/**
-	 * Fetches a URL.  Will use the cookie for login if it is set.
+	 * Fetches a URL.  Will use the token for login if it is set.
 	 * 
 	 * @access private
 	 * @param string $url URL to fetch
@@ -552,9 +519,10 @@ class Reader {
 		$this->_channel = curl_init($url);
 		curl_setopt($this->_channel, CURLOPT_RETURNTRANSFER, TRUE);
 		curl_setopt($this->_channel, CURLOPT_FOLLOWLOCATION, TRUE);
-		if ($this->_cookie != NULL) {
-			curl_setopt($this->_channel, CURLOPT_COOKIE, $this->_cookie);
+		if ($this->_token != NULL) {
+			curl_setopt($this->_channel, CURLOPT_HTTPHEADER, array('Authorization:GoogleLogin auth=' . $this->_token));
 		}
+		
 		if ($post != NULL) {
 			$post_string = '';
 			foreach($post as $key=>$value) { 
