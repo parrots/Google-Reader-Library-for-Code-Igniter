@@ -385,7 +385,7 @@ class Reader {
 			
 			$this->_channel = curl_init($this->login_url);
 			curl_setopt($this->_channel, CURLOPT_POST, TRUE);
-			curl_setopt($this->_channel, CURLOPT_POSTFIELDS, $post_data);
+			curl_setopt($this->_channel, CURLOPT_POSTFIELDS, http_build_query($post_data));
 			curl_setopt($this->_channel, CURLOPT_FOLLOWLOCATION, TRUE);
 			curl_setopt($this->_channel, CURLOPT_RETURNTRANSFER, TRUE);
 			$result = curl_exec($this->_channel);
