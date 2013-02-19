@@ -118,10 +118,10 @@ In addition to being able to share items that come up in your feeds, you can als
 ##Using the Library — Error Handling
 The library has some basic error handling for when things go wrong. Instead of checking for NULL or FALSE on the results of a call, simply call the **errors_exist** function which returns TRUE/FALSE based on if the call was successful. If it returns true you can get the error(s) by calling the **errors** function to get an array of errors.
 
-$this->load->library('reader');
-$credentials = array('email' => 'me@gmail.com', 'password' => 'wrongpassword');
-$this->reader->initialize($credentials);
-
+	$this->load->library('reader');
+	$credentials = array('email' => 'me@gmail.com', 'password' => 'wrongpassword');
+	$this->reader->initialize($credentials);
+	
 	$shared_items = $this->reader->shared_items();
 	if ($this->reader->errors_exist()) {
 		//oh no, errors!
